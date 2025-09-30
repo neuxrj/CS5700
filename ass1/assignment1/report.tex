@@ -1,0 +1,591 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{geometry} % For setting margins
+\usepackage{listings} % For code listings
+\usepackage{hyperref} % For hyperlinks
+\usepackage{xcolor} % For custom colors
+\usepackage{float} % For placing figures
+
+\geometry{a4paper, margin=1in}
+
+% Java code style for listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{javastyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\footnotesize\ttfamily,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+\lstset{style=javastyle}
+
+\title{5700 Assignment 1 Report: Socket Programming}
+\author{Tony}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Program Description}
+
+This project is a Java client-server application demonstrating socket programming, multi-threading, and basic protocol design. It includes a multi-threaded server for concurrent clients, a single-threaded version for sequential handling, and a command-line client.
+
+The communication protocol is text-based, using comma-separated strings. The server validates client input and shuts down if it receives a number outside the predefined range [1, 100].
+
+\section{Choice of Programming Language}
+
+Java was chosen for this project due to its:
+
+\begin{itemize}
+    \item \textbf{Rich Networking API:} Java's standard library (\texttt{java.net}) provides a powerful and straightforward API for socket programming. Classes like \texttt{Socket}, \texttt{ServerSocket}, and \texttt{InetAddress} abstract away many of the low-level complexities of network communication, making it easier to build robust client-server applications.
+    \item \textbf{Built-in Multi-threading:} Concurrency is a core requirement for the server to handle multiple clients. Java has excellent built-in support for multi-threading through the \texttt{Thread} class and the \texttt{Runnable} interface, simplifying the development of a concurrent server.
+    \item \textbf{Platform Independence:} The Java Virtual Machine (JVM) allows the compiled Java bytecode to run on any platform where a JVM is available (e.g., Windows, macOS, Linux). This "write once, run anywhere" capability is highly beneficial for network applications that may be deployed in diverse environments.
+    \item \textbf{Strong Typing and Object-Oriented:} Java's static typing helps catch errors at compile time, and its object-oriented nature allows for a modular and maintainable program design. This is evident in the use of a dedicated \texttt{ClientHandler} class to encapsulate the logic for handling a single client.
+\end{itemize}
+
+\section{Program Design}
+
+The application design separates client and server components.
+
+\subsection{Communication Protocol}
+The client and server communicate over a TCP socket connection. The messages exchanged are simple comma-separated strings.
+\begin{itemize}
+    \item \textbf{Client to Server:} The client sends a message in the format: \texttt{CLIENT\_NAME,CLIENT\_NUMBER}. For example: \texttt{"Client of Tony,50"}.
+    \item \textbf{Server to Client:} The server responds with a message in the format: \texttt{SERVER\_NAME,SERVER\_NUMBER}. For example: \texttt{"Server of Tony,42"}.
+    \item \textbf{Error/Shutdown Condition:} If the client sends a number outside the valid range of 1-100, the server sends a shutdown message and terminates.
+\end{itemize}
+
+\subsection{Multi-threaded Server (\texttt{SocketServer.java})}
+The main server is designed to be concurrent, allowing it to handle multiple client connections at the same time. This is achieved using Java's threading capabilities.
+
+\begin{itemize}
+    \item \textbf{Main Thread:} The main server thread initializes a \texttt{ServerSocket} and enters an infinite loop, waiting for client connections by calling \texttt{serverSocket.accept()}.
+    \item \textbf{Client Handler Thread:} For each incoming connection, a new \texttt{Socket} object is created. This socket is then passed to a new \texttt{ClientHandler} runnable object, which is executed in a separate thread. This design allows the main thread to immediately return to waiting for new connections, ensuring the server remains responsive.
+\end{itemize}
+
+The core logic for processing a client's request is encapsulated in the \texttt{handleClientRequest} method within the \texttt{ClientHandler} class.
+
+\begin{lstlisting}[language=Java, caption={SocketServer main loop for accepting connections}]
+// ...
+while (!serverSocket.isClosed()) {
+    try {
+        Socket clientSocket = serverSocket.accept();
+        System.out.println("[Server] Accepted connection from " + clientSocket.getInetAddress());
+        // Create a new thread to handle the client connection
+        new Thread(new ClientHandler(clientSocket, serverSocket)).start();
+    } catch (IOException e) {
+        // ...
+    }
+}
+// ...
+\end{lstlisting}
+
+\subsection{Single-threaded Server (\texttt{SocketServerSingleThread.java})}
+For comparison and simplicity, a single-threaded version of the server is also provided. This server handles only one client at a time. After accepting a connection, it processes the entire request and sends a response before it can accept a new connection. This version reuses the same \texttt{handleClientRequest} logic from the multi-threaded server's \texttt{ClientHandler} to maintain consistency.
+
+\begin{lstlisting}[language=Java, caption={SocketServerSingleThread main loop}]
+// ...
+while (!serverSocket.isClosed()) {
+    try {
+        Socket clientSocket = serverSocket.accept();
+        System.out.println("[SingleThreadServer] Accepted connection from " + clientSocket.getInetAddress());
+        handleClient(clientSocket, serverSocket);
+    } catch (IOException e) {
+        // ...
+    }
+}
+// ...
+\end{lstlisting}
+
+\subsection{Client (\texttt{SocketClient.java})}
+The client is a simple command-line application that performs the following steps:
+\begin{enumerate}
+    \item Prompts the user to enter an integer between 1 and 100.
+    \item Establishes a connection to the server at \texttt{localhost} on port \texttt{5701}.
+    \item Sends its name and the user-provided number to the server.
+    \item Waits for and receives the server's response.
+    \item Parses the server's name and number from the response.
+    \item Calculates and prints the sum of the client's and server's numbers.
+    \item Closes the connection.
+\end{enumerate}
+
+\begin{lstlisting}[language=Java, caption={SocketClient communication logic}]
+// ...
+try (Socket socket = new Socket(SERVER_HOST, SERVER_PORT);
+     PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+     BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+    System.out.println("[Client] Connected to server.");
+
+    String message = CLIENT_NAME + "," + clientNumber;
+    out.println(message);
+    System.out.println("[Client] Sent: " + message);
+
+    String response = in.readLine();
+    System.out.println("[Client] Received: " + response);
+    // ...
+}
+// ...
+\end{lstlisting}
+
+\section{Features}
+\begin{itemize}
+    \item \textbf{Concurrency:} The primary server (\texttt{SocketServer.java}) can serve multiple clients simultaneously, making it scalable.
+    \item \textbf{Input Validation:} The server validates the number received from the client. If the number is not within the range [1, 100], the server initiates a shutdown procedure. This provides a mechanism for controlled termination.
+    \item \textbf{Modularity:} The client handling logic is encapsulated within the \texttt{ClientHandler} class, separating it from the main server connection-listening loop. This logic is reused by the single-threaded server.
+\end{itemize}
+
+\section{User Guide}
+
+This guide provides instructions on how to compile, run, and test the application.
+
+\subsection{Prerequisites}
+A Java Development Kit (JDK) version 8 or higher must be installed on your system.
+
+\subsection{How to Compile}
+Open a terminal or command prompt, navigate to the project's \texttt{src} directory, and execute the following commands to compile all Java source files:
+\begin{verbatim}
+javac SocketServer.java
+javac SocketServerSingleThread.java
+javac SocketClient.java
+\end{verbatim}
+
+\subsection{How to Run}
+\begin{enumerate}
+    \item \textbf{Start the Server:} You can run either the multi-threaded or single-threaded server.
+
+    To run the \textbf{multi-threaded server}, execute:
+    \begin{verbatim}
+java SocketServer
+    \end{verbatim}
+
+    To run the \textbf{single-threaded server}, execute:
+    \begin{verbatim}
+java SocketServerSingleThread
+    \end{verbatim}
+    The server will start and print a message indicating it is waiting for client connections.
+
+    \item \textbf{Run the Client:}
+    Open a \textbf{new} terminal window, navigate to the \texttt{src} directory, and run:
+    \begin{verbatim}
+java SocketClient
+    \end{verbatim}
+    The client will prompt you to enter a number. You can run multiple instances of the client to test the multi-threaded server's concurrency.
+\end{enumerate}
+
+\section{Test Plan}
+
+The test plan ensures application correctness and includes both automated unit tests and manual system tests.
+
+\subsection{Unit Tests}
+Unit tests were written using the JUnit 5 framework to validate the core business logic of the server in isolation.
+\begin{itemize}
+    \item \textbf{Test Environment:} JUnit 5.
+    \item \textbf{Test File:} \texttt{SocketServerTest.java}.
+    \item \textbf{Target Method:} \texttt{handleClientRequest(String clientName, int clientNumber)}.
+\end{itemize}
+
+\subsubsection{Test Cases}
+\begin{enumerate}
+    \item \textbf{Test Case 1: Valid Input}
+    \begin{itemize}
+        \item \textbf{Objective:} Verify the server's response for a valid input number within the range [1, 100].
+        \item \textbf{Input:} \texttt{clientName = "TestClient"}, \texttt{clientNumber = 50}.
+        \item \textbf{Expected Output:} The server returns a string containing its name and number, e.g., \texttt{"Server of Tony,42"}.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+    \item \textbf{Test Case 2: Boundary Input (Low)}
+    \begin{itemize}
+        \item \textbf{Objective:} Verify the server's shutdown response for an out-of-range number just below the valid minimum.
+        \item \textbf{Input:} \texttt{clientName = "TestClient"}, \texttt{clientNumber = 0}.
+        \item \textbf{Expected Output:} The server returns the shutdown message: \texttt{"Server is shutting down due to out-of-range input."}.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+    \item \textbf{Test Case 3: Boundary Input (High)}
+    \begin{itemize}
+        \item \textbf{Objective:} Verify the server's shutdown response for an out-of-range number just above the valid maximum.
+        \item \textbf{Input:} \texttt{clientName = "TestClient"}, \texttt{clientNumber = 101}.
+        \item \textbf{Expected Output:} The server returns the shutdown message: \texttt{"Server is shutting down due to out-of-range input."}.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Manual System Testing}
+Manual tests were conducted to verify the end-to-end functionality of the client-server interaction.
+
+\subsubsection{Test Cases}
+\begin{enumerate}
+    \item \textbf{Test Case 1: Single Client Connection}
+    \begin{itemize}
+        \item \textbf{Objective:} Ensure a single client can connect, communicate, and receive the correct sum.
+        \item \textbf{Steps:}
+            \begin{enumerate}
+                \item Start the server.
+                \item Start one client.
+                \item Enter a valid number (e.g., 60).
+            \end{enumerate}
+        \item \textbf{Expected Output:} The client and server consoles should display the names, numbers, and the correct sum (60 + 42 = 102). The connection should terminate gracefully.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+    \item \textbf{Test Case 2: Concurrent Client Connections (Multi-threaded Server)}
+    \begin{itemize}
+        \item \textbf{Objective:} Verify the multi-threaded server can handle multiple clients simultaneously.
+        \item \textbf{Steps:}
+            \begin{enumerate}
+                \item Start the multi-threaded server.
+                \item Start three clients in quick succession.
+                \item Enter different valid numbers for each client.
+            \end{enumerate}
+        \item \textbf{Expected Output:} The server should handle all three clients concurrently without blocking. Each client should receive its correct, distinct response from the server.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+    \item \textbf{Test Case 3: Server Shutdown}
+    \begin{itemize}
+        \item \textbf{Objective:} Confirm that the server shuts down when a client sends an out-of-range number.
+        \item \textbf{Steps:}
+            \begin{enumerate}
+                \item Start the server.
+                \item Start a client and enter an invalid number (e.g., 150).
+                \item Attempt to start another client.
+            \end{enumerate}
+        \item \textbf{Expected Output:} The first client receives a shutdown message. The server terminal indicates it is shutting down. The second client fails to connect.
+        \item \textbf{Result:} Passed.
+    \end{itemize}
+\end{enumerate}
+
+\section{Screenshots}
+
+This section is reserved for screenshots showing the output from the collaborative portion and testing.
+
+\begin{figure}[H]
+    \centering
+    \fbox{Screenshot of Server and Client running with valid input.}
+    \caption{Normal operation with a single client.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \fbox{Screenshot of Server handling multiple clients concurrently.}
+    \caption{Multi-threaded server with three clients.}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \fbox{Screenshot of Server shutting down after invalid input.}
+    \caption{Server shutdown test.}
+\end{figure}
+
+\appendix
+\section{Source Code}
+
+\subsection{SocketServer.java}
+\begin{lstlisting}[language=Java, caption={SocketServer.java - Multi-threaded Server}]
+import java.io.*;
+import java.net.*;
+
+public class SocketServer {
+    public static final int SERVER_PORT = 5701;
+    public static final String SERVER_NAME = "Server of Tony";
+    public static final int SERVER_NUMBER = 42;
+
+    public static void main(String[] args) {
+        System.out.println("[Server] Starting on port " + SERVER_PORT);
+        try (ServerSocket serverSocket = new ServerSocket(SERVER_PORT)) {
+            System.out.println("[Server] Waiting for client connections...");
+            while (!serverSocket.isClosed()) {
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    System.out.println("[Server] Accepted connection from " + clientSocket.getInetAddress());
+                    // Create a new thread to handle the client connection
+                    new Thread(new ClientHandler(clientSocket, serverSocket)).start();
+                } catch (IOException e) {
+                    if (serverSocket.isClosed()) {
+                        System.out.println("[Server] Server socket closed, shutting down.");
+                        break;
+                    }
+                    System.out.println("[Server] Error accepting client connection: " + e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("[Server] Error starting server: " + e.getMessage());
+        }
+        System.out.println("[Server] Terminated.");
+    }
+
+    static class ClientHandler implements Runnable {
+        private final Socket clientSocket;
+        private final ServerSocket serverSocket;
+
+        public ClientHandler(Socket socket, ServerSocket serverSocket) {
+            this.clientSocket = socket;
+            this.serverSocket = serverSocket;
+        }
+
+        /**
+         * Processes the client request and returns a response string.
+         * This method contains the core logic for handling client input.
+         * @param clientName The name of the client.
+         * @param clientNumber The number sent by the client.
+         * @return A string response to be sent back to the client.
+         */
+        public String handleClientRequest(String clientName, int clientNumber) {
+            System.out.println("[Server] Received from " + clientName + ": " + clientNumber);
+
+            if (clientNumber < 1 || clientNumber > 100) {
+                System.out.println("[Server] Client number " + clientNumber + " is out of range. Shutting down server.");
+                try {
+                    if (serverSocket != null && !serverSocket.isClosed()) {
+                        serverSocket.close();
+                    }
+                } catch (IOException e) {
+                    System.out.println("[Server] Error closing server socket: " + e.getMessage());
+                }
+                return "Server is shutting down due to out-of-range input.";
+            }
+
+            System.out.println("[Server] Client's name: " + clientName);
+            System.out.println("[Server] My name: " + SocketServer.SERVER_NAME);
+            System.out.println("[Server] Client's number: " + clientNumber);
+            System.out.println("[Server] My number: " + SocketServer.SERVER_NUMBER);
+            int sum = clientNumber + SocketServer.SERVER_NUMBER;
+            System.out.println("[Server] Sum: " + sum);
+
+            // Send server name and number back to the client
+            return SocketServer.SERVER_NAME + "," + SocketServer.SERVER_NUMBER;
+        }
+
+        public void run() {
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {
+
+                String message = in.readLine();
+                if (message == null) {
+                    System.out.println("[Server] Client disconnected before sending a message.");
+                    return;
+                }
+
+                String[] parts = message.split(",");
+                if (parts.length != 2) {
+                    System.out.println("[Server] Invalid message format from client.");
+                    return;
+                }
+
+                String clientName = parts[0];
+                int clientNumber = Integer.parseInt(parts[1]);
+
+                String response = handleClientRequest(clientName, clientNumber);
+                out.println(response);
+
+            } catch (IOException e) {
+                System.out.println("[Server] Error handling client: " + e.getMessage());
+            } catch (NumberFormatException e) {
+                System.out.println("[Server] Invalid number format from client.");
+            } finally {
+                try {
+                    clientSocket.close();
+                } catch (IOException e) {
+                    System.out.println("[Server] Error closing client socket: " + e.getMessage());
+                }
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{SocketServerSingleThread.java}
+\begin{lstlisting}[language=Java, caption={SocketServerSingleThread.java - Single-threaded Server}]
+import java.io.*;
+import java.net.*;
+
+public class SocketServerSingleThread {
+    public static void main(String[] args) {
+        System.out.println("[SingleThreadServer] Starting on port " + SocketServer.SERVER_PORT);
+        try (ServerSocket serverSocket = new ServerSocket(SocketServer.SERVER_PORT)) {
+            System.out.println("[SingleThreadServer] Waiting for client connections...");
+            while (!serverSocket.isClosed()) {
+                try {
+                    Socket clientSocket = serverSocket.accept();
+                    System.out.println("[SingleThreadServer] Accepted connection from " + clientSocket.getInetAddress());
+                    handleClient(clientSocket, serverSocket);
+                } catch (IOException e) {
+                    if (serverSocket.isClosed()) {
+                        System.out.println("[SingleThreadServer] Server socket closed, shutting down.");
+                        break;
+                    }
+                    System.out.println("[SingleThreadServer] Error accepting client connection: " + e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("[SingleThreadServer] Error starting server: " + e.getMessage());
+        }
+        System.out.println("[SingleThreadServer] Terminated.");
+    }
+
+    private static void handleClient(Socket clientSocket, ServerSocket serverSocket) {
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+             PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {
+
+            String message = in.readLine();
+            if (message == null) {
+                System.out.println("[SingleThreadServer] Client disconnected before sending a message.");
+                return;
+            }
+
+            String[] parts = message.split(",");
+            if (parts.length != 2) {
+                System.out.println("[SingleThreadServer] Invalid message format from client.");
+                return;
+            }
+
+            String clientName = parts[0];
+            int clientNumber = Integer.parseInt(parts[1]);
+
+            // Reuse SocketServer.ClientHandler's handleClientRequest method
+            SocketServer.ClientHandler handler = new SocketServer.ClientHandler(clientSocket, serverSocket);
+            String response = handler.handleClientRequest(clientName, clientNumber);
+            out.println(response);
+
+        } catch (IOException e) {
+            System.out.println("[SingleThreadServer] Error handling client: " + e.getMessage());
+        } catch (NumberFormatException e) {
+            System.out.println("[SingleThreadServer] Invalid number format from client.");
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException e) {
+                System.out.println("[SingleThreadServer] Error closing client socket: " + e.getMessage());
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{SocketClient.java}
+\begin{lstlisting}[language=Java, caption={SocketClient.java - Client Application}]
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
+
+public class SocketClient {
+    public static void main(String[] args) {
+        final String SERVER_HOST = "localhost";
+        final int SERVER_PORT = 5701;
+        final String CLIENT_NAME = "Client of Tony";
+
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Enter an integer between 1 and 100 (or an invalid number to shut down the server): ");
+        int clientNumber = scanner.nextInt();
+
+
+        if (clientNumber < 1 || clientNumber > 100) {
+            System.out.println("You entered a number out of range. The server should shut down.");
+        }
+
+        try (Socket socket = new Socket(SERVER_HOST, SERVER_PORT);
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+            System.out.println("[Client] Connected to server.");
+
+            String message = CLIENT_NAME + "," + clientNumber;
+            out.println(message);
+            System.out.println("[Client] Sent: " + message);
+
+            String response = in.readLine();
+            System.out.println("[Client] Received: " + response);
+
+            if (response == null || response.contains("shutting down")) {
+                System.out.println("[Client] Server has closed the connection.");
+                return;
+            }
+
+            String[] parts = response.split(",");
+            String serverName = parts[0];
+            int serverNumber = Integer.parseInt(parts[1]);
+
+            int sum = clientNumber + serverNumber;
+
+            System.out.println("[Client] My name: " + CLIENT_NAME);
+            System.out.println("[Client] Server name: " + serverName);
+            System.out.println("[Client] My number: " + clientNumber);
+            System.out.println("[Client] Server number: " + serverNumber);
+            System.out.println("[Client] Sum: " + sum);
+
+        } catch (IOException e) {
+            System.out.println("[Client] Error: " + e.getMessage());
+        }
+        System.out.println("[Client] Terminated.");
+    }
+}
+\end{lstlisting}
+
+\subsection{SocketServerTest.java}
+\begin{lstlisting}[language=Java, caption={SocketServerTest.java - JUnit Tests}]
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class SocketServerTest {
+
+    private SocketServer.ClientHandler clientHandler;
+
+    @BeforeEach
+    void setUp() {
+        // For testing the handleClientRequest method, we don't need a real socket.
+        // We can pass null for the Socket and ServerSocket objects.
+        clientHandler = new SocketServer.ClientHandler(null, null);
+    }
+
+    @Test
+    void testHandleClientRequest_ValidNumber() {
+        String clientName = "TestClient";
+        int clientNumber = 50;
+        String expectedResponse = SocketServer.SERVER_NAME + "," + SocketServer.SERVER_NUMBER;
+
+        String actualResponse = clientHandler.handleClientRequest(clientName, clientNumber);
+
+        assertEquals(expectedResponse, actualResponse, "Response for a valid number should contain server name and number.");
+    }
+
+    @Test
+    void testHandleClientRequest_NumberTooLow() {
+        String clientName = "TestClient";
+        int clientNumber = 0; // Out of range (less than 1)
+        String expectedResponse = "Server is shutting down due to out-of-range input.";
+
+        String actualResponse = clientHandler.handleClientRequest(clientName, clientNumber);
+
+        assertEquals(expectedResponse, actualResponse, "Response for a number less than 1 should be a shutdown message.");
+    }
+
+    @Test
+    void testHandleClientRequest_NumberTooHigh() {
+        String clientName = "TestClient";
+        int clientNumber = 101; // Out of range (greater than 100)
+        String expectedResponse = "Server is shutting down due to out-of-range input.";
+
+        String actualResponse = clientHandler.handleClientRequest(clientName, clientNumber);
+
+        assertEquals(expectedResponse, actualResponse, "Response for a number greater than 100 should be a shutdown message.");
+    }
+}
+\end{lstlisting}
+
+\end{document}
+
