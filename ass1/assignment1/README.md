@@ -63,7 +63,6 @@ You will need a Java Development Kit (JDK) installed.
 
 -   **Valid Input**: Enter a number between 1 and 100 to see the normal operation.
 -   **Invalid Input**: Enter a number outside the 1-100 range (e.g., 0 or 101) to test the server's shutdown functionality.
--   **Concurrency**: You can run multiple instances of the client to see the server handling them concurrently.
 
 ### Unit Tests
 
